@@ -2,6 +2,8 @@
 
 ![Site checker](docs/banner.jpg)
 
+> **Test version.** This app is live, but I have not checked it myself yet. If you want to use it, keep that in mind.
+
 Point it at a page, get a short list of what to fix. Missing alt text, no mobile viewport, heavy images, scripts that block the page. Plain words, worst problems first, and a score out of 100.
 
 **[Open the web page](https://davydmedvedchuk.github.io/site-checker/)** (paste the page's HTML) · or use the command line, which can fetch a site by itself.
@@ -19,6 +21,18 @@ python3 cli/sitecheck.py https://your-site.pt --json               # for scripts
 ```
 
 Giving it a web address also turns on the live checks: download time, compression, HTML weight, and every image is weighed.
+
+## Security mode (your own sites)
+
+Tick "Also check security" on the page, or add `--security` on the command line. It is passive: it reads the page code you gave it and, on the command line, the headers of the one address you typed. It does not scan, guess paths or send test attacks, so use it only on sites you own.
+
+| Level | Checks | Where |
+|---|---|---|
+| Fix first | a form that sends data over http | both |
+| Should fix | scripts or styles from other sites without an `integrity` attribute; no `Strict-Transport-Security`; the page can be put in a frame by other sites | both / CLI |
+| Nice to have | links with `target="_blank"` without `rel="noopener"`; inline `onclick` code; embeds without `sandbox`; a generator tag with a version; no Content-Security-Policy, `nosniff` or Referrer-Policy; the server announces its version | both / CLI |
+
+Header checks need the command line, because a web page cannot read another site's headers.
 
 ## What it checks
 
@@ -40,6 +54,9 @@ python3 tests/test_live.py       # throwaway local server: heavy image, missing 
 ```
 
 ## Limits
+
+- Security mode finds common slips, it is not a security audit. A clean result does not mean a site is safe.
+- On GitHub Pages you cannot set response headers, so the header checks will always flag a site hosted there. That is expected.
 
 - It reads the HTML you give it. It does not run JavaScript, so a page built entirely in the browser (many single-page apps) looks nearly empty to it.
 - It does not measure real speed on a phone, only the download of the HTML and the weight of images. For that use Lighthouse.

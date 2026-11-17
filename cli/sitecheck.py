@@ -4,6 +4,7 @@
     python3 cli/sitecheck.py https://example.com
     python3 cli/sitecheck.py page.html --url https://example.com/   (a saved file; the address only matters for mixed content)
     python3 cli/sitecheck.py https://example.com --json
+    python3 cli/sitecheck.py https://example.com --security   (also checks code and headers for security; only for sites you own)
 
 No dependencies, Python 3.9+. The HTML rules are the same as the web page (checker.js): tests/fixtures hold the pages both must agree on.
 Live checks (page weight, compression, speed, heavy images) only run when you give a web address.
@@ -79,7 +80,7 @@ def has(attr_dict, name):
     return name in attr_dict
 
 
-def run_static(html: str, base: str | None = None) -> list[dict]:
+def run_static(html: str, base: str | None = None, security: bool = False) -> list[dict]:
     p = Page(); p.feed(html)
     els = p.els
     out: list[dict] = []
@@ -147,6 +148,23 @@ def run_static(html: str, base: str | None = None) -> list[dict]:
         mixed = [e for e in els if (e.tag in ("img", "script", "iframe", "source") and e.a.get("src", "").lower().startswith("http://"))
                  or (e.tag == "link" and "stylesheet" in rel(e) and e.a.get("href", "").lower().startswith("http://"))]
         if mixed: add("mixed-content", "error", f"{len(mixed)} resource{'s' if len(mixed) > 1 else ''} loaded over http on an https page", "Change http:// to https://. Browsers block or warn about these.", mixed)
+    if security:
+        host = lambda u: (urllib.parse.urlparse("https:" + u if u.startswith("//") else u).hostname or "").lower()
+        bhost = host(base) if base else ""
+        absolute = lambda u: u.lower().startswith(("http://", "https://", "//"))
+        bad_form = [e for e in by("form") if e.a.get("action", "").strip().lower().startswith("http://")]
+        if bad_form: add("sec-form-http", "error", f"Forms that send data over http: {len(bad_form)}", "Change the form action to https://. Anything typed into it can be read on the way.", bad_form)
+        ext = [e for e in els if ((e.tag == "script" and absolute(e.a.get("src", "").strip())) or (e.tag == "link" and "stylesheet" in e.a.get("rel", "").lower().split() and absolute(e.a.get("href", "").strip())))
+               and host(e.a.get("src") or e.a.get("href", "")) != bhost and "integrity" not in e.a]
+        if ext: add("sec-no-sri", "warn", f"Files from other sites without an integrity check: {len(ext)}", "Add integrity=\"sha384-…\" and crossorigin=\"anonymous\", or host the file yourself. Then a changed file on the other site cannot run on your page.", ext)
+        blank = [e for e in by("a") if e.a.get("target", "").lower() == "_blank" and not ({"noopener", "noreferrer"} & set(e.a.get("rel", "").lower().split()))]
+        if blank: add("sec-blank-rel", "info", f"Links that open a new tab without rel=\"noopener\": {len(blank)}", "Add rel=\"noopener\" to links with target=\"_blank\".", blank)
+        inline = [e for e in els if any(re.fullmatch(r"on[a-z]+", k) for k in e.a)]
+        if inline: add("sec-inline-handler", "info", f"Elements with inline event code (onclick and similar): {len(inline)}", "Move it into a script file. Inline code stops you from using a strict Content-Security-Policy.", inline)
+        frames = [e for e in by("iframe") if absolute(e.a.get("src", "").strip()) and host(e.a.get("src", "")) != bhost and "sandbox" not in e.a]
+        if frames: add("sec-iframe-sandbox", "info", f"Embedded frames without sandbox: {len(frames)}", "Add sandbox=\"allow-scripts allow-same-origin\" (only what the embed needs).", frames)
+        gen = [e for e in by("meta") if e.a.get("name", "").lower() == "generator" and re.search(r"\d", e.a.get("content", ""))]
+        if gen: add("sec-generator-version", "info", "The page tells everyone which software and version built it", "Remove the generator meta tag, or at least the version number.", gen)
     return out
 
 
@@ -192,6 +210,23 @@ def run_live(url: str, html_bytes: int, headers, seconds: float, html: str) -> l
     return out
 
 
+def run_security_live(url: str, headers) -> list[dict]:
+    """Response headers a browser relies on. Only for an address you give; nothing else is requested."""
+    out: list[dict] = []
+    add = lambda id, level, title, fix: out.append({"id": id, "level": level, "title": title, "fix": fix, "count": 1, "examples": []})
+    h = {k.lower(): v for k, v in headers.items()}
+    csp = h.get("content-security-policy", "")
+    if url.lower().startswith("https://") and "strict-transport-security" not in h:
+        add("sec-hsts", "warn", "No Strict-Transport-Security header", "Send Strict-Transport-Security: max-age=31536000 so browsers always use https for this site.")
+    if not csp: add("sec-csp", "info", "No Content-Security-Policy header", "Start with a simple policy, for example default-src 'self'. It limits what a page can load or run.")
+    if "x-frame-options" not in h and "frame-ancestors" not in csp: add("sec-frame", "warn", "Other sites can put this page in a frame", "Send X-Frame-Options: DENY, or frame-ancestors 'self' in the Content-Security-Policy.")
+    if h.get("x-content-type-options", "").lower() != "nosniff": add("sec-nosniff", "info", "No X-Content-Type-Options: nosniff", "Send X-Content-Type-Options: nosniff so the browser does not guess file types.")
+    if "referrer-policy" not in h: add("sec-referrer", "info", "No Referrer-Policy header", "Send Referrer-Policy: strict-origin-when-cross-origin.")
+    leak = [f"{k}: {h[k]}" for k in ("server", "x-powered-by") if re.search(r"\d+\.\d+", h.get(k, ""))]
+    if leak: add("sec-server-version", "info", "The server announces its software version", "Hide the version in the server settings. " + "; ".join(leak))
+    return out
+
+
 WEIGHT = {"error": 12, "warn": 5, "info": 1}
 ORDER = {"error": 0, "warn": 1, "info": 2}
 LABEL = {"error": "Fix first", "warn": "Should fix", "info": "Nice to have"}
@@ -221,6 +256,7 @@ def main():
     ap.add_argument("--url", help="the real address of a saved file (needed for the https checks)")
     ap.add_argument("--json", action="store_true", help="print JSON instead of text")
     ap.add_argument("--no-live", action="store_true", help="skip speed, compression and image-size checks")
+    ap.add_argument("--security", action="store_true", help="also run passive security checks: page code and response headers. Only for sites you own.")
     a = ap.parse_args()
     live = a.target.lower().startswith(("http://", "https://"))
     issues: list[dict] = []
@@ -229,12 +265,13 @@ def main():
             r, body, secs = fetch(a.target)
             html = body.decode(r.headers.get_content_charset() or "utf-8", "replace")
             final = r.geturl()
-            issues += run_static(html, final)
+            issues += run_static(html, final, a.security)
+            if a.security: issues += run_security_live(final, r.headers)
             if not a.no_live: issues += run_live(final, len(body), r.headers, secs, html)
             title = f"Checked {final}"
         else:
             html = open(a.target, encoding="utf-8", errors="replace").read()
-            issues += run_static(html, a.url)
+            issues += run_static(html, a.url, a.security)
             title = f"Checked {a.target}"
     except Exception as e:
         print(f"Could not check that: {e}", file=sys.stderr); sys.exit(2)

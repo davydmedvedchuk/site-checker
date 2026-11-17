@@ -8,7 +8,8 @@
     return `<${e.tagName.toLowerCase()}${keep ? ' ' + keep : ''}>`;
   };
 
-  function check(html, base) {
+  function check(html, base, opts) {
+    opts = opts || {};
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const out = [];
     const add = (id, level, title, fix, items = []) => out.push({ id, level, title, fix, count: items.length || 1, examples: items.slice(0, 3).map(x => typeof x === 'string' ? x : snip(x)) });
@@ -69,6 +70,23 @@
       const http = (v) => /^http:\/\//i.test(v || '');
       const mixed = all.filter(e => (['IMG', 'SCRIPT', 'IFRAME', 'SOURCE'].includes(e.tagName) && http(e.getAttribute('src'))) || (e.tagName === 'LINK' && rel(e).includes('stylesheet') && http(e.getAttribute('href'))));
       if (mixed.length) add('mixed-content', 'error', `${plural(mixed.length, 'resource')} loaded over http on an https page`, 'Change http:// to https://. Browsers block or warn about these.', mixed);
+    }
+    if (opts.security) {
+      const host = (u) => { try { return new URL(u.startsWith('//') ? 'https:' + u : u).hostname.toLowerCase(); } catch (e) { return ''; } };
+      const bhost = base ? host(base) : '';
+      const abs = (u) => /^(https?:)?\/\//i.test((u || '').trim());
+      const badForm = $$('form').filter(f => /^http:\/\//i.test(val(f, 'action')));
+      if (badForm.length) add('sec-form-http', 'error', `Forms that send data over http: ${badForm.length}`, 'Change the form action to https://. Anything typed into it can be read on the way.', badForm);
+      const ext = all.filter(e => ((e.tagName === 'SCRIPT' && abs(e.getAttribute('src'))) || (e.tagName === 'LINK' && rel(e).includes('stylesheet') && abs(e.getAttribute('href')))) && host(e.getAttribute('src') || e.getAttribute('href')) !== bhost && !has(e, 'integrity'));
+      if (ext.length) add('sec-no-sri', 'warn', `Files from other sites without an integrity check: ${ext.length}`, 'Add integrity="sha384-…" and crossorigin="anonymous", or host the file yourself. Then a changed file on the other site cannot run on your page.', ext);
+      const blank = $$('a').filter(a => (a.getAttribute('target') || '').toLowerCase() === '_blank' && !rel(a).some(r => r === 'noopener' || r === 'noreferrer'));
+      if (blank.length) add('sec-blank-rel', 'info', `Links that open a new tab without rel="noopener": ${blank.length}`, 'Add rel="noopener" to links with target="_blank".', blank);
+      const inline = all.filter(e => e.getAttributeNames().some(n => /^on[a-z]+$/.test(n)));
+      if (inline.length) add('sec-inline-handler', 'info', `Elements with inline event code (onclick and similar): ${inline.length}`, 'Move it into a script file. Inline code stops you from using a strict Content-Security-Policy.', inline);
+      const frames = $$('iframe').filter(f => abs(f.getAttribute('src')) && host(f.getAttribute('src')) !== bhost && !has(f, 'sandbox'));
+      if (frames.length) add('sec-iframe-sandbox', 'info', `Embedded frames without sandbox: ${frames.length}`, 'Add sandbox="allow-scripts allow-same-origin" (only what the embed needs).', frames);
+      const gen = $$('meta').filter(m => (m.getAttribute('name') || '').toLowerCase() === 'generator' && /\d/.test(val(m, 'content')));
+      if (gen.length) add('sec-generator-version', 'info', 'The page tells everyone which software and version built it', 'Remove the generator meta tag, or at least the version number.', gen);
     }
     out.sort((a, b) => LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]);
     return out;

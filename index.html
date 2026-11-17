@@ -43,9 +43,13 @@ button.go{background:var(--mark);border-color:var(--mark);color:var(--mark-ink)}
 .acts button{font-size:13px;padding:8px 12px}
 header a.back,.back{display:inline-flex;align-items:center;min-height:44px;padding:0 6px}
 header a.back{white-space:nowrap}input#base{min-height:44px}
+.sec{display:flex;gap:10px;align-items:flex-start;margin:12px 0 0;min-height:44px;font:500 15px/1.4 var(--body, inherit);cursor:pointer}.sec input{width:22px;height:22px;margin-top:2px;flex:none}.sec span{font-weight:400;color:var(--muted)}
 </style>
 </head>
 <body>
+<style>.beta{font:500 13px/1.4 "IBM Plex Mono",ui-monospace,monospace;background:#F0B429;color:#15171B;padding:8px 14px;text-align:center}.beta b{font-weight:700}</style>
+<div class="beta" role="note"><b>Test version.</b> This app is live, but its author has not checked it yet. If you use it, keep that in mind.</div>
+
 <div class="wrap">
   <header>
     <img src="logo.svg" alt="">
@@ -60,7 +64,8 @@ header a.back{white-space:nowrap}input#base{min-height:44px}
     <label class="file">Open a saved .html<input id="file" type="file" accept=".html,.htm,text/html" hidden></label>
     <button class="go" id="go">Check</button>
   </div>
-  <p class="hint">A web page cannot download another site (the browser forbids it), so you paste the HTML. Want it to fetch the address itself, and to weigh images, test speed and compression? Use the command line: <code>python3 cli/sitecheck.py https://your-site.pt</code></p>
+  <label class="sec"><input type="checkbox" id="sec"> Also check security <span>(for your own site: forms over http, files from other sites without an integrity check, inline code)</span></label>
+  <p class="hint">A web page cannot download another site (the browser forbids it), so you paste the HTML. Want it to fetch the address itself, and to weigh images, test speed and compression? Use the command line (add <code>--security</code> to also check the server headers): <code>python3 cli/sitecheck.py https://your-site.pt</code></p>
 
   <div id="out"></div>
 </div>
@@ -94,9 +99,10 @@ function asText(issues) {
 }
 function run() {
   const html = $('html').value; if (!html.trim()) { $('out').textContent = ''; $('html').focus(); return; }
-  render(SiteCheck.check(html, $('base').value.trim()));
+  render(SiteCheck.check(html, $('base').value.trim(), { security: $('sec').checked }));
 }
 $('go').onclick = run;
+$('sec').onchange = () => { if ($('html').value.trim()) run(); };
 $('file').onchange = async (e) => { const f = e.target.files[0]; if (f) { $('html').value = await f.text(); run(); } e.target.value = ''; };
 window.__sc = { run };
 </script>

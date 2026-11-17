@@ -1,0 +1,12 @@
+{
+ "good": [],
+ "insecure": [
+  "sec-blank-rel",
+  "sec-form-http",
+  "sec-generator-version",
+  "sec-iframe-sandbox",
+  "sec-inline-handler",
+  "sec-no-sri"
+ ],
+ "safe": []
+}
