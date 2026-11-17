@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Site checker</title>
+<meta name="description" content="Paste a page's HTML, get a short list of what to fix: missing alt text, no title, no mobile viewport and more. Runs in your browser.">
+<meta name="theme-color" content="#F3F3F0">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="vendor/fonts/fonts.css">
+<style>
+:root{--bg:#F3F3F0;--surface:#fff;--ink:#15171B;--muted:#62666F;--line:#D5D6D9;--line2:#B4B7BD;--mark:#B87300;--mark-ink:#fff;--err:#C8323A;--warn:#B87300;--info:#4A5563;--ok:#1F7A55;
+  --display:"Archivo","Arial Narrow",Arial,sans-serif;--body:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#131417;--surface:#1B1D21;--ink:#ECEDEF;--muted:#9EA2AA;--line:#2C2F35;--line2:#454952;--mark:#F0B429;--mark-ink:#17120A;--err:#FF7A80;--warn:#F0B429;--info:#9EA2AA;--ok:#3DBE8B;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);-webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto;padding:22px 18px 80px}
+header{display:flex;gap:16px;align-items:center;padding-bottom:18px;border-bottom:2px solid var(--ink)}
+header img{width:64px;height:48px}
+h1{margin:0;font:800 34px/1 var(--display);font-stretch:80%}
+header p{margin:6px 0 0;font:400 13px var(--mono);color:var(--muted)}
+header a.back{margin-left:auto;font:400 13px var(--mono);color:var(--ink);text-decoration:underline}
+label.l{display:block;margin:22px 0 6px;font:500 13px var(--mono)}
+textarea{width:100%;min-height:200px;resize:vertical;font:400 13px/1.45 var(--mono);padding:12px;border:1.5px solid var(--ink);background:var(--surface);color:var(--ink)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+input[type=text]{flex:1;min-width:200px;font:400 13px var(--mono);padding:10px;border:1.5px solid var(--line2);background:var(--surface);color:var(--ink)}
+button,.file{font:700 15px var(--body);padding:11px 16px;border:2px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer}
+button.go{background:var(--mark);border-color:var(--mark);color:var(--mark-ink)}
+.hint{margin-top:10px;font:400 12px/1.5 var(--mono);color:var(--muted)}
+.hint code{background:color-mix(in srgb,var(--ink) 8%,transparent);padding:1px 5px}
+#out{margin-top:26px}
+.sum{display:flex;gap:18px;align-items:center;padding:16px;border:2px solid var(--ink);background:var(--surface)}
+.sc{font:800 56px/1 var(--display);font-stretch:80%}
+.sum p{margin:0;font:400 13px/1.5 var(--mono);color:var(--muted)}
+.grp{margin:22px 0 8px;font:600 12px var(--mono);letter-spacing:.16em;text-transform:uppercase}
+.it{background:var(--surface);border:1.5px solid var(--line);border-left-width:6px;padding:12px 14px;margin-bottom:8px}
+.it.error{border-left-color:var(--err)}.it.warn{border-left-color:var(--warn)}.it.info{border-left-color:var(--info)}
+.it b{display:block;font:700 16px/1.3 var(--body)}
+.it span{display:block;margin-top:4px;font:400 14px/1.45 var(--body);color:var(--muted)}
+.it code{display:block;margin-top:6px;font:400 12px var(--mono);color:var(--muted);overflow-wrap:anywhere}
+.ok{padding:18px;border:2px solid var(--ok);font:600 16px var(--body)}
+.acts{display:flex;gap:8px;margin-top:16px}
+.acts button{font-size:13px;padding:8px 12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="logo.svg" alt="">
+    <div><h1>Site checker</h1><p>Paste a page, get a short list of what to fix.<br>Runs in your browser. Nothing is sent.</p></div>
+    <a class="back" href="../">← all</a>
+  </header>
+
+  <label class="l" for="html">The page's HTML</label>
+  <textarea id="html" placeholder="Open the page, press Ctrl+U (View source), select all, copy, paste here."></textarea>
+  <div class="row">
+    <input id="base" type="text" placeholder="Page address (optional, for the https check)" inputmode="url">
+    <label class="file">Open a saved .html<input id="file" type="file" accept=".html,.htm,text/html" hidden></label>
+    <button class="go" id="go">Check</button>
+  </div>
+  <p class="hint">A web page cannot download another site (the browser forbids it), so you paste the HTML. Want it to fetch the address itself, and to weigh images, test speed and compression? Use the command line: <code>python3 cli/sitecheck.py https://your-site.pt</code></p>
+
+  <div id="out"></div>
+</div>
+<script src="checker.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const LABEL = { error: 'Fix first', warn: 'Should fix', info: 'Nice to have' };
+let last = null;
+function render(issues) {
+  last = issues; const sc = SiteCheck.score(issues), out = $('out'); out.textContent = '';
+  const sum = document.createElement('div'); sum.className = 'sum';
+  sum.innerHTML = `<div class="sc">${sc}</div><p>out of 100<br>${issues.length ? issues.length + ' thing' + (issues.length > 1 ? 's' : '') + ' to look at' : 'nothing to fix'}</p>`;
+  out.appendChild(sum);
+  if (!issues.length) { const d = document.createElement('div'); d.className = 'ok'; d.style.marginTop = '14px'; d.textContent = 'Nothing to fix in the HTML. Nice.'; out.appendChild(d); }
+  let cur = null;
+  for (const i of issues) {
+    if (i.level !== cur) { cur = i.level; const g = document.createElement('div'); g.className = 'grp'; g.textContent = LABEL[cur]; out.appendChild(g); }
+    const d = document.createElement('div'); d.className = 'it ' + i.level;
+    const b = document.createElement('b'); b.textContent = i.title; const s = document.createElement('span'); s.textContent = i.fix;
+    d.append(b, s); i.examples.forEach(x => { const c = document.createElement('code'); c.textContent = x; d.appendChild(c); });
+    out.appendChild(d);
+  }
+  const a = document.createElement('div'); a.className = 'acts'; const cp = document.createElement('button'); cp.textContent = 'Copy as text';
+  cp.onclick = async () => { try { await navigator.clipboard.writeText(asText(issues)); cp.textContent = 'Copied'; } catch (e) { cp.textContent = 'Could not copy'; } };
+  a.appendChild(cp); out.appendChild(a);
+}
+function asText(issues) {
+  const L = [`Score ${SiteCheck.score(issues)} / 100`, ''];
+  let cur = null; for (const i of issues) { if (i.level !== cur) { cur = i.level; L.push('== ' + LABEL[cur] + ' =='); } L.push('- ' + i.title, '    ' + i.fix); }
+  return L.join('\n');
+}
+function run() {
+  const html = $('html').value; if (!html.trim()) { $('out').textContent = ''; $('html').focus(); return; }
+  render(SiteCheck.check(html, $('base').value.trim()));
+}
+$('go').onclick = run;
+$('file').onchange = async (e) => { const f = e.target.files[0]; if (f) { $('html').value = await f.text(); run(); } e.target.value = ''; };
+window.__sc = { run };
+</script>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+ "good": [],
+ "bad": [
+  "canonical-missing",
+  "favicon-missing",
+  "h1-multiple",
+  "heading-skip",
+  "img-alt-missing",
+  "img-lazy-missing",
+  "img-size-missing",
+  "input-label-missing",
+  "lang-missing",
+  "link-empty",
+  "mixed-content",
+  "og-missing",
+  "script-blocking",
+  "title-long",
+  "viewport-missing"
+ ],
+ "empty": [
+  "canonical-missing",
+  "description-missing",
+  "favicon-missing",
+  "h1-missing",
+  "lang-missing",
+  "og-missing",
+  "title-missing",
+  "viewport-missing"
+ ]
+}
