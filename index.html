@@ -41,6 +41,8 @@ button.go{background:var(--mark);border-color:var(--mark);color:var(--mark-ink)}
 .ok{padding:18px;border:2px solid var(--ok);font:600 16px var(--body)}
 .acts{display:flex;gap:8px;margin-top:16px}
 .acts button{font-size:13px;padding:8px 12px}
+header a.back,.back{display:inline-flex;align-items:center;min-height:44px;padding:0 6px}
+header a.back{white-space:nowrap}input#base{min-height:44px}
 </style>
 </head>
 <body>
@@ -54,7 +56,7 @@ button.go{background:var(--mark);border-color:var(--mark);color:var(--mark-ink)}
   <label class="l" for="html">The page's HTML</label>
   <textarea id="html" placeholder="Open the page, press Ctrl+U (View source), select all, copy, paste here."></textarea>
   <div class="row">
-    <input id="base" type="text" placeholder="Page address (optional, for the https check)" inputmode="url">
+    <input id="base" aria-label="Page address" type="text" placeholder="Page address (optional, for the https check)" inputmode="url">
     <label class="file">Open a saved .html<input id="file" type="file" accept=".html,.htm,text/html" hidden></label>
     <button class="go" id="go">Check</button>
   </div>
